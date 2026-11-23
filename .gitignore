@@ -1,0 +1,41 @@
+# --- Data: never commit raw or derived data ---
+data/raw/
+data/interim/
+data/processed/
+figures/
+results/
+*.nii
+*.nii.gz
+*.dcm
+*.RDS
+*.RDS.gz
+*.rds
+*.h5ad
+*.zip
+*.tar
+*.tar.gz
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+!figures/.gitkeep
+!results/.gitkeep
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- Secrets / local config ---
+.env
+.synapseConfig
+configs/local*.yaml

@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gbmplast"
+version = "0.1.0"
+description = "Reproducible research pipeline for glioblastoma tumour-cell plasticity, tumour evolution and treatment resistance across public multimodal cohorts."
+readme = "README.md"
+requires-python = ">=3.10,<3.12"
+license = { text = "MIT" }
+authors = [{ name = "GBM Plasticity Project" }]
+
+dependencies = [
+  "numpy>=1.26,<2.0",
+  "pandas>=2.2,<3.0",
+  "scipy>=1.11",
+  "scikit-learn>=1.4",
+  "statsmodels>=0.14",
+  "matplotlib>=3.8",
+  "seaborn>=0.13",
+  "pyyaml>=6.0",
+  "requests>=2.31",
+  "tqdm>=4.66",
+  "openpyxl>=3.1",
+  "pyarrow>=15.0",
+]
+
+[project.optional-dependencies]
+imaging = [
+  "nibabel>=5.2",
+  "SimpleITK>=2.3",
+  "pyradiomics==3.1.0",
+  "pydicom>=2.4",
+]
+modeling = [
+  "scikit-survival>=0.22",
+  "lifelines>=0.28",
+  "xgboost>=2.0",
+  "lightgbm>=4.0",
+  "shap>=0.44",
+]
+molecular = [
+  "anndata>=0.10",
+  "scanpy>=1.10",
+  "rdata>=0.11",
+]
+notebooks = [
+  "jupyter>=1.0",
+  "jupytext>=1.16",
+  "nbformat>=5.10",
+]
+dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+all = ["gbmplast[imaging,modeling,molecular,notebooks,dev]"]
+
+[project.scripts]
+gbmplast = "gbmplast.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+gbmplast = ["resources/*.json", "resources/*.yaml", "resources/*.tsv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+  "requires_data: test needs downloaded raw data under data/raw/",
+  "slow: long-running test",
+]

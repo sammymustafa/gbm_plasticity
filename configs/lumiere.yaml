@@ -1,0 +1,66 @@
+# Module A: longitudinal MRI progression prediction (LUMIERE).
+cohort:
+  key: lumiere
+
+cohorts:
+  lumiere:
+    raw_subdir: lumiere
+    # Which automated segmentation to use as the primary source of volumes.
+    # HD-GLIO-AUTO: labels {1: non_enhancing, 2: enhancing}
+    # DeepBraTumIA: labels {1: necrosis, 2: enhancing, 3: edema}
+    primary_segmentation: HD-GLIO-AUTO
+    # Sequence whose intensity/texture features are used. Shape features are
+    # mask-derived and identical across sequences.
+    primary_sequence: CT1
+    acquire:
+      images:
+        # Development subset only. The full archive is 32.5 GB.
+        n_patients: 5
+        member_patterns:
+          - "Imaging/{patient}/{timepoint}/CT1.nii.gz"
+          - "Imaging/{patient}/{timepoint}/FLAIR.nii.gz"
+          - "Imaging/{patient}/{timepoint}/HD-GLIO-AUTO-segmentation/registered/segmentation.nii.gz"
+
+longitudinal:
+  # A visit enters the longitudinal table only if it has usable imaging.
+  require_imaging: true
+  # Subregions carried forward as volumes.
+  subregions: [enhancing, non_enhancing]
+  # Maximum gap between consecutive studies for a transition to be modelled.
+  max_interscan_interval_days: 365
+  # Minimum gap; guards against two studies in the same week being treated
+  # as a longitudinal transition.
+  min_interscan_interval_days: 7
+
+analysis:
+  next_visit_rano:
+    estimand: >
+      Among LUMIERE patient-visits with a prior imaged study and an
+      expert-rated next study, the probability that the NEXT expert RANO
+      rating is progressive disease (PD), given information available up to
+      and including the prediction visit.
+    prediction_time: index visit (the later of a consecutive imaged pair)
+    lookback_window_days: 365
+    outcome_horizon_days: 365
+    eligibility:
+      - "patient has >= 2 imaged studies"
+      - "index visit has radiomics for the primary segmentation"
+      - "next visit carries an expert RANO rating in {PD, SD, PR, CR}"
+    exclusions:
+      - "Pre-Op and Post-Op ratings are not response assessments"
+      - "transitions longer than max_interscan_interval_days"
+    outcome: rano_progression_next_visit
+    positive_label: PD
+  next_visit_volume_change:
+    estimand: >
+      Relative change in enhancing-tumour volume between the prediction visit
+      and the next imaged study, given information available up to and
+      including the prediction visit.
+    outcome: rel_change_enhancing_next
+    outcome_type: continuous
+
+models:
+  - last_observation_baseline     # carry forward the current RANO/volume trend
+  - clinical_only
+  - imaging_only
+  - combined

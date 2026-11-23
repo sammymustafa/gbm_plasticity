@@ -1,0 +1,73 @@
+# Project-wide defaults. Every other config layers on top of this file.
+project:
+  name: gbm_plasticity
+  description: >
+    Glioblastoma tumour-cell plasticity, tumour evolution and treatment
+    resistance across public multimodal cohorts.
+
+paths:
+  raw: data/raw
+  interim: data/interim
+  processed: data/processed
+  figures: figures
+  results: results
+
+reproducibility:
+  seed: 20251123
+  n_bootstrap: 2000          # patient-level bootstrap replicates for CIs
+  bootstrap_seed: 777
+
+logging:
+  level: INFO
+
+# ---------------------------------------------------------------------------
+# Modelling defaults. Estimands are declared per analysis in the cohort files.
+# ---------------------------------------------------------------------------
+modeling:
+  cv:
+    scheme: stratified_group_kfold   # groups are ALWAYS patient_id
+    n_splits: 5
+    n_repeats: 1
+    shuffle: true
+  inner_cv:
+    n_splits: 3                      # nested selection / hyperparameter search
+  imputation:
+    strategy: median                 # fitted inside the training fold only
+    add_indicator: true              # preserve missingness as a feature
+  scaling: standard
+  elastic_net:
+    l1_ratio: [0.1, 0.5, 0.9, 1.0]
+    C: [0.01, 0.1, 1.0, 10.0]
+  gradient_boosting:
+    n_estimators: [200, 400]
+    learning_rate: [0.03, 0.1]
+    max_depth: [2, 3]
+    subsample: 0.8
+  min_events_per_feature: 5          # below this, feature selection is capped
+  max_features_selected: 25
+  calibration:
+    n_bins: 10
+    method: isotonic_cv
+
+leakage:
+  # Checks run before every fit; a hard failure aborts the run.
+  forbid_same_patient_across_folds: true
+  forbid_future_features: true
+  forbid_outcome_derived_features: true
+
+# ---------------------------------------------------------------------------
+# Cohort registry. raw_subdir is relative to paths.raw.
+# ---------------------------------------------------------------------------
+cohorts:
+  lumiere:
+    raw_subdir: lumiere
+  upenn_gbm:
+    raw_subdir: upenn_gbm
+  ucsd_ptgbm:
+    raw_subdir: ucsd_ptgbm
+  gbm_care:
+    raw_subdir: gbm_care
+  glass:
+    raw_subdir: glass
+  institutional:
+    raw_subdir: institutional
