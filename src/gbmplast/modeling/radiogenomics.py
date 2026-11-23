@@ -513,6 +513,7 @@ def _write_and_report(results: list, outdir: Path, figdir: Path, *,
     best = max((r for r in results
                 if r.metrics.get("discrimination_defined") is not False),
                key=lambda r: r.metrics.get("auroc", 0), default=None)
+    _attribute(results, data, outdir)
     if best is not None and best.selected_features is not None:
         stability = summarise_selection(best.selected_features,
                                         len(best.folds) if best.folds is not None else 5)
@@ -532,6 +533,38 @@ def _write_and_report(results: list, outdir: Path, figdir: Path, *,
         print(f"\nfigures -> {figdir}")
     except Exception as exc:
         print(f"  (figures skipped: {exc})")
+
+
+def _attribute(results: list, data: pd.DataFrame, outdir: Path) -> None:
+    """Permutation importance, where the sample size makes it interpretable."""
+    from gbmplast.modeling.explain import CAUTION, explain_if_valid
+    from gbmplast.modeling.models import gradient_boosting_classifier
+
+    candidates = [r for r in results
+                  if r.model.endswith("gradient_boosting")
+                  and r.selected_features is not None]
+    if not candidates:
+        return
+    best = max(candidates, key=lambda r: r.metrics.get("auroc", 0))
+    block = best.model.split("__")[0]
+    columns = sorted({str(f).replace("missingindicator_", "")
+                      for f in best.selected_features["feature"]})
+    columns = [c for c in columns if c in data.columns]
+    if not columns:
+        return
+    importance, reason = explain_if_valid(
+        data, feature_cols=columns, outcome_col="y",
+        estimator=gradient_boosting_classifier())
+    print(f"\n== feature attribution ({block}) ==")
+    print(f"  {reason}")
+    if importance is None or importance.empty:
+        pd.DataFrame([{"status": "refused", "reason": reason}]).to_csv(
+            outdir / "attribution_refused.csv", index=False)
+        return
+    importance.to_csv(outdir / f"permutation_importance__{best.model}.csv",
+                      index=False)
+    print(importance.head(10).round(4).to_string(index=False))
+    print(f"  {CAUTION}")
 
 
 def _usable(df: pd.DataFrame, column: str, *, min_present: float = 0.3,
