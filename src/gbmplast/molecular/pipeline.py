@@ -35,6 +35,19 @@ GENE_INFO = "reference/Homo_sapiens.gene_info.gz"
 
 def run_pseudobulk(config: Config, *, dataset: str = "gbm_care",
                    limit: int | None = None) -> int:
+    """Build pseudobulk profiles, one specimen per subprocess.
+
+    Each specimen is parsed in its own short-lived process and its result
+    cached to disk, so (a) the reader's ~7 GB peak is reclaimed
+    unconditionally rather than accumulating, and (b) an interrupted run
+    resumes from the cache instead of starting over.
+    """
+    import json
+    import subprocess
+    import sys
+
+    from gbmplast.molecular.worker import cache_paths, is_cached
+
     adapter = get_adapter(dataset, config)
     if not adapter.is_buildable()[0]:
         print(f"  {dataset}: metadata absent; "
@@ -42,7 +55,8 @@ def run_pseudobulk(config: Config, *, dataset: str = "gbm_care",
         return 0
 
     specimen_dir = adapter.raw_dir / "specimens"
-    files = sorted(specimen_dir.glob("*_umi_counts.RDS.gz")) if specimen_dir.exists() else []
+    files = (sorted(specimen_dir.glob("*_umi_counts.RDS.gz"))
+             if specimen_dir.exists() else [])
     if not files:
         print(f"  no specimen matrices in {specimen_dir}\n"
               f"  run: gbmplast acquire --dataset {dataset} --specimens "
@@ -52,72 +66,86 @@ def run_pseudobulk(config: Config, *, dataset: str = "gbm_care",
         files = files[:limit]
 
     gene_info = config.paths.raw / GENE_INFO
-    use_cnv = gene_info.exists()
-    if not use_cnv:
+    if not gene_info.exists():
         print(f"  (gene_info not found at {gene_info}; CNV validation of the "
               "malignant compartment will be skipped)")
 
-    samples = adapter.sample_records().set_index("gsm")
-    outdir = adapter.processed_dir
-    outdir.mkdir(parents=True, exist_ok=True)
+    cache_dir = adapter.interim_dir / "pseudobulk_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    min_malignant = int(config.get(
+        "molecular.pseudobulk.min_malignant_cells", 50))
 
+    pending = [f for f in files
+               if not is_cached(cache_dir, f.name.split("_")[0])]
+    print(f"  {len(files)} specimens; {len(files) - len(pending)} already "
+          f"cached, {len(pending)} to process")
+    print(f"  cache: {cache_dir}")
+
+    failures: list[tuple[str, str]] = []
+    for i, path in enumerate(pending, 1):
+        accession = path.name.split("_")[0]
+        command = [sys.executable, "-m", "gbmplast.molecular.worker",
+                   str(path), str(cache_dir),
+                   "--min-malignant-cells", str(min_malignant)]
+        if gene_info.exists():
+            command += ["--gene-info", str(gene_info)]
+        completed = subprocess.run(command, capture_output=True, text=True)
+        if completed.returncode != 0 or not is_cached(cache_dir, accession):
+            detail = (completed.stdout or completed.stderr or "").strip()
+            failures.append((accession, detail[-300:]))
+            print(f"   ! {accession}: {detail[-200:]}")
+        if i % 10 == 0 or i == len(pending):
+            print(f"   {i}/{len(pending)} processed")
+
+    # ---- assemble from the cache ----------------------------------------
     all_profiles: dict[str, pd.Series] = {}
     malignant_profiles: dict[str, pd.Series] = {}
     composition_rows: list[dict] = []
     validation_rows: list[dict] = []
+    samples = adapter.sample_records().set_index("gsm")
 
-    print(f"  processing {len(files)} specimens "
-          f"(one at a time; each dense matrix is discarded after pseudobulk)")
-    for i, path in enumerate(files, 1):
+    for path in files:
         accession = path.name.split("_")[0]
-        try:
-            sample = read_umi_rds(path)
-            cells = assign_cell_types(sample)
-        except Exception as exc:
-            print(f"   ! {accession}: {type(exc).__name__}: {exc}")
+        if not is_cached(cache_dir, accession):
             continue
+        profile_path, meta_path = cache_paths(cache_dir, accession)
+        profiles = pd.read_parquet(profile_path)
+        all_profiles[accession] = profiles["all_cells"]
+        malignant_profiles[accession] = profiles["malignant"]
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
 
-        meta = samples.loc[accession] if accession in samples.index else None
-        malignant_mask = cells["is_malignant_compartment"].to_numpy()
-        n_malignant = int(malignant_mask.sum())
-
-        all_profiles[accession] = pseudobulk(sample)
-        malignant_profiles[accession] = (
-            pseudobulk(sample, cell_mask=malignant_mask)
-            if n_malignant >= 50 else pd.Series(np.nan, index=sample.genes))
-
+        record = samples.loc[accession] if accession in samples.index else None
         row = {
             "accession": accession,
-            "local_patient_id": meta["local_patient_id"] if meta is not None else pd.NA,
-            "sample_role": meta["sample_role"] if meta is not None else pd.NA,
-            "site": meta["site"] if meta is not None else pd.NA,
-            "n_cells": sample.n_cells,
-            "n_genes": sample.n_genes,
-            "n_malignant_compartment": n_malignant,
-            "malignant_fraction": round(n_malignant / max(1, sample.n_cells), 4),
-            "malignant_pseudobulk_available": n_malignant >= 50,
+            "local_patient_id": (record["local_patient_id"]
+                                 if record is not None else pd.NA),
+            "sample_role": record["sample_role"] if record is not None else pd.NA,
+            "site": record["site"] if record is not None else pd.NA,
+            "n_cells": meta.get("n_cells"),
+            "n_genes": meta.get("n_genes"),
+            "n_malignant_compartment": meta.get("n_malignant_compartment"),
+            "malignant_fraction": meta.get("malignant_fraction"),
+            "malignant_pseudobulk_available": meta.get(
+                "malignant_pseudobulk_available"),
         }
-        for cell_type, fraction in (cells["cell_type"].value_counts(normalize=True)
-                                    .round(4).items()):
+        for cell_type, fraction in (meta.get("composition") or {}).items():
             row[f"frac_{cell_type}"] = fraction
         composition_rows.append(row)
 
-        if use_cnv:
-            cnv = infer_chromosome_scores(sample, cells, gene_info_path=gene_info)
-            validation = validate_malignant_compartment(cnv, cells)
+        validation = meta.get("cnv_validation")
+        if validation:
+            validation = dict(validation)
             validation["accession"] = accession
             validation["local_patient_id"] = row["local_patient_id"]
             validation["sample_role"] = row["sample_role"]
             validation_rows.append(validation)
 
-        del sample
-        if i % 10 == 0 or i == len(files):
-            print(f"   {i}/{len(files)} processed")
-
     if not all_profiles:
         print("  no specimens could be processed")
         return 1
 
+    outdir = adapter.processed_dir
+    outdir.mkdir(parents=True, exist_ok=True)
     all_matrix = pd.DataFrame(all_profiles).sort_index()
     malignant_matrix = pd.DataFrame(malignant_profiles).sort_index()
     all_matrix.to_parquet(outdir / "pseudobulk_all_cells.parquet")
@@ -129,12 +157,17 @@ def run_pseudobulk(config: Config, *, dataset: str = "gbm_care",
           f"{all_matrix.shape[1]} samples -> {outdir}")
     print(f"  malignant pseudobulk available for "
           f"{int(composition['malignant_pseudobulk_available'].sum())} samples")
+    if failures:
+        pd.DataFrame(failures, columns=["accession", "error"]).to_csv(
+            outdir / "pseudobulk_failures.csv", index=False)
+        print(f"  {len(failures)} specimens failed; see "
+              f"{outdir / 'pseudobulk_failures.csv'}")
 
     if validation_rows:
         validation = pd.DataFrame(validation_rows)
         validation.to_csv(outdir / "cnv_validation.csv", index=False)
-        verdicts = validation["verdict"].value_counts().to_dict()
-        print(f"  CNV validation of the malignant compartment: {verdicts}")
+        print(f"  CNV validation of the malignant compartment: "
+              f"{validation['verdict'].value_counts().to_dict()}")
         passing = validation[validation["verdict"] == "pass"]
         if len(passing):
             print(f"    median chr7-gain/chr10-loss separation "
@@ -143,8 +176,8 @@ def run_pseudobulk(config: Config, *, dataset: str = "gbm_care",
 
     print("\n  composition (median fraction across samples):")
     frac_cols = [c for c in composition.columns if c.startswith("frac_")]
-    medians = composition[frac_cols].median().sort_values(ascending=False)
-    for name, value in medians.items():
+    for name, value in composition[frac_cols].median().sort_values(
+            ascending=False).items():
         print(f"    {name.replace('frac_', ''):20s} {value:.3f}")
     return 0
 

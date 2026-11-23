@@ -59,11 +59,12 @@ def acquire_tables(adapter, *, overwrite: bool = False) -> AcquisitionReport:
     total = 0
     for sf in adapter.source_files():
         dest = sf.resolve(adapter.raw_dir)
-        if sf.url is None:
+        if sf.url is None or getattr(sf, "manual", False):
             if not dest.exists():
                 messages.append(
-                    f"{sf.relative_path}: no public URL "
-                    f"({sf.note or 'manual acquisition required'})")
+                    f"{sf.relative_path}: not downloadable "
+                    f"({sf.note or 'manual acquisition required'}; "
+                    f"see {sf.url or 'the cohort documentation'})")
             continue
         if dest.exists() and not overwrite:
             skipped.append(sf.relative_path)

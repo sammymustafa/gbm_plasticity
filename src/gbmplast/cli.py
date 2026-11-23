@@ -180,7 +180,6 @@ def cmd_acquire(args: argparse.Namespace) -> int:
 
 def cmd_canonicalize(args: argparse.Namespace) -> int:
     cfg = _build_config(args)
-    rc = 0
     for key in _resolve_datasets(args.dataset):
         adapter = get_adapter(key, cfg)
         buildable, missing = adapter.is_buildable()
@@ -194,7 +193,7 @@ def cmd_canonicalize(args: argparse.Namespace) -> int:
         print(bundle.summary().to_string(index=False))
         for name, note in sorted(bundle.notes.items()):
             print(f"   note[{name}]: {note}")
-    return rc
+    return 0
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -222,9 +221,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
         out = cfg.paths.results / "validation_report.csv"
         pd.concat(frames, ignore_index=True).to_csv(out, index=False)
         print(f"\n-> {out}")
-    if rc and args.strict:
-        return rc
-    return 0 if not args.strict else rc
+    # Errors only fail the command under --strict, so an exploratory
+    # validate on partially-downloaded data stays usable.
+    return rc if args.strict else 0
 
 
 def cmd_dictionary(args: argparse.Namespace) -> int:

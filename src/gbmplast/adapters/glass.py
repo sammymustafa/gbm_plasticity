@@ -108,13 +108,16 @@ class GlassAdapter(DatasetAdapter):
         return [
             SourceFile("surgeries", cfg.get("surgeries", "clinical_surgeries.tsv"),
                        "One row per surgery with interval, histology and markers.",
-                       url="https://www.synapse.org/glass"),
+                       url="https://www.synapse.org/glass", manual=True,
+                       note="Synapse account + consortium terms required."),
             SourceFile("cases", cfg.get("cases", "clinical_cases.tsv"),
                        "One row per case with demographics and survival.",
-                       url="https://www.synapse.org/glass"),
+                       url="https://www.synapse.org/glass", manual=True,
+                       note="Synapse account + consortium terms required."),
             SourceFile("rnaseq", cfg.get("rnaseq", "analysis_rnaseq_tpm.tsv"),
                        "Gene x aliquot expression matrix.", required=False,
-                       url="https://www.synapse.org/glass"),
+                       url="https://www.synapse.org/glass", manual=True,
+                       note="Synapse account + consortium terms required."),
         ]
 
     def acquisition_instructions(self) -> str:

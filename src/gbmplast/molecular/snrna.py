@@ -18,6 +18,7 @@ such would turn 56 patients into hundreds of thousands of fake replicates.
 
 from __future__ import annotations
 
+import gc
 import gzip
 import warnings
 from dataclasses import dataclass, field
@@ -74,10 +75,20 @@ def read_umi_rds(path: Path, *, min_counts_per_cell: int = 200,
     # Orient as genes x cells using the label lengths.
     if dense.shape[0] != len(genes) and dense.shape[1] == len(genes):
         dense = dense.T
-        genes, barcodes = genes, barcodes
 
-    counts = sparse.csr_matrix(np.rint(dense).astype(np.int32))
-    del dense
+    # Convert to sparse in row blocks. A whole-matrix
+    # ``np.rint(dense).astype(np.int32)`` would materialise two more full
+    # copies of a ~1.6 GB array; at ~30 samples that transient peak is what
+    # drove the process to an out-of-memory kill. Blocking keeps the extra
+    # allocation to a few hundred MB.
+    block_rows = 4096
+    blocks = []
+    for start in range(0, dense.shape[0], block_rows):
+        block = dense[start:start + block_rows]
+        blocks.append(sparse.csr_matrix(np.rint(block).astype(np.int32)))
+    counts = sparse.vstack(blocks).tocsr() if len(blocks) > 1 else blocks[0]
+    del dense, blocks, array, converted, parsed
+    gc.collect()
 
     genes = np.asarray([str(g) for g in genes])
     barcodes = np.asarray([str(b) for b in barcodes])

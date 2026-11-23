@@ -44,6 +44,12 @@ class SourceFile:
     #: probe, because a server that refuses HEAD would otherwise look small.
     large: bool = False
     approx_bytes: int | None = None
+    #: True when `url` is a landing page behind a login or data-use
+    #: agreement rather than a direct download. Bulk acquisition must skip
+    #: these: fetching the URL would save an HTML page under the data
+    #: file's name, after which is_buildable() would wrongly report the
+    #: cohort as ready.
+    manual: bool = False
 
     def resolve(self, root: Path) -> Path:
         return root / self.relative_path
