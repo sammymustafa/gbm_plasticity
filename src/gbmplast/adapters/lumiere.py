@@ -234,10 +234,12 @@ class LumiereAdapter(DatasetAdapter):
             SourceFile("imaging_zip", "Imaging-v202211.zip",
                        "NIfTI images + segmentations (32.5 GB single archive).",
                        required=False, url=base + "38249697",
+                       large=True, approx_bytes=32_565_470_000,
                        note="Optional: only needed for image-level QC and "
                             "de-novo feature extraction. Use "
                             "'gbmplast acquire --dataset lumiere --images "
-                            "--n-patients 5' for a development subset."),
+                            "--n-patients 5' for a development subset, which "
+                            "transfers megabytes via HTTP range requests."),
         ]
 
     # -- raw readers ------------------------------------------------------

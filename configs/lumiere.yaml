@@ -24,6 +24,8 @@ cohorts:
 longitudinal:
   # A visit enters the longitudinal table only if it has usable imaging.
   require_imaging: true
+  # Lookback window for trajectory slopes.
+  lookback_days: 365
   # Subregions carried forward as volumes.
   subregions: [enhancing, non_enhancing]
   # Maximum gap between consecutive studies for a transition to be modelled.
@@ -51,6 +53,13 @@ analysis:
       - "transitions longer than max_interscan_interval_days"
     outcome: rano_progression_next_visit
     positive_label: PD
+  next_visit_volume:
+    # Primary continuous outcome: the symmetric log volume ratio. The raw
+    # relative change is unstable against small denominators (observed
+    # values up to +306 from a 24 mm^3 index lesion), so it is secondary
+    # and carries a segmentation-reliability floor.
+    outcome: next_log_ratio_enhancing
+    min_index_volume_mm3: 100
   next_visit_volume_change:
     estimand: >
       Relative change in enhancing-tumour volume between the prediction visit
@@ -64,3 +73,4 @@ models:
   - clinical_only
   - imaging_only
   - combined
+

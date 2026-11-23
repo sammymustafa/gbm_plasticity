@@ -68,7 +68,16 @@ def acquire_tables(adapter, *, overwrite: bool = False) -> AcquisitionReport:
         if dest.exists() and not overwrite:
             skipped.append(sf.relative_path)
             continue
-        # Skip the giant optional archives; they have dedicated commands.
+        # Bulk archives are declared by the adapter, not discovered by a
+        # network probe: a server that refuses HEAD must not be able to make
+        # a 32 GB file look like an ordinary table.
+        if getattr(sf, "large", False):
+            approx = getattr(sf, "approx_bytes", None)
+            size_text = f"{approx / 1e9:.1f} GB" if approx else "bulk archive"
+            messages.append(
+                f"{sf.relative_path}: {size_text} -- skipped by default. "
+                f"{sf.note or 'Use the dedicated subset command.'}")
+            continue
         size = remote_size(sf.url)
         if size is not None and size > 2 * 1024 ** 3:
             messages.append(

@@ -39,6 +39,11 @@ class SourceFile:
     required: bool = True
     url: str | None = None
     note: str | None = None
+    #: Declared out-of-band as a bulk archive. Bulk acquisition skips these
+    #: outright: whether a file is enormous must not depend on a network
+    #: probe, because a server that refuses HEAD would otherwise look small.
+    large: bool = False
+    approx_bytes: int | None = None
 
     def resolve(self, root: Path) -> Path:
         return root / self.relative_path

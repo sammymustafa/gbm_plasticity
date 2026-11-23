@@ -40,12 +40,33 @@ def head(url: str, *, timeout=DEFAULT_TIMEOUT) -> requests.Response:
 
 
 def remote_size(url: str) -> int | None:
+    """Total size in bytes, or None if the server will not say.
+
+    HEAD is tried first, then a 1-byte Range GET: Figshare redirects to a
+    signed S3 URL whose signature covers GET only, so HEAD comes back 403
+    with no Content-Length while a Range GET returns 206 plus a
+    Content-Range carrying the true total.
+    """
     try:
         r = head(url)
         value = r.headers.get("Content-Length")
-        return int(value) if value is not None else None
+        if value is not None and r.status_code < 400:
+            return int(value)
     except Exception:
-        return None
+        pass
+    try:
+        r = requests.get(url, headers={"Range": "bytes=0-0",
+                                       "User-Agent": USER_AGENT},
+                         stream=True, timeout=DEFAULT_TIMEOUT)
+        content_range = r.headers.get("Content-Range")
+        r.close()
+        if content_range and "/" in content_range:
+            total = content_range.rsplit("/", 1)[1].strip()
+            if total.isdigit():
+                return int(total)
+    except Exception:
+        pass
+    return None
 
 
 def supports_ranges(url: str) -> bool:
@@ -88,6 +109,13 @@ def download(
             "want the whole archive, or use the range-based extractor to pull "
             "only the members you need."
         )
+    if size is None and not allow_large:
+        # Fail closed. A server that will not declare a size must not be able
+        # to stream an unbounded file: the transfer is capped below and
+        # aborted if it crosses the guard.
+        cap = LARGE_FILE_BYTES
+    else:
+        cap = None
 
     delay = 2.0
     last_error: Exception | None = None
@@ -100,14 +128,28 @@ def download(
                 written = 0
                 with tmp.open("wb") as fh:
                     for chunk in r.iter_content(DEFAULT_CHUNK):
-                        if chunk:
-                            fh.write(chunk)
-                            written += len(chunk)
+                        if not chunk:
+                            continue
+                        fh.write(chunk)
+                        written += len(chunk)
+                        if cap is not None and written > cap:
+                            fh.close()
+                            tmp.unlink(missing_ok=True)
+                            raise DownloadError(
+                                f"{url} did not declare a size and exceeded "
+                                f"the {cap / 1e9:.1f} GB guard after "
+                                f"{written / 1e9:.2f} GB; aborted. Pass "
+                                "allow_large=True to permit it, or extract "
+                                "only the members you need."
+                            )
                 tmp.replace(dest)
                 if not quiet:
                     print(f"  downloaded {dest.name} ({written / 1e6:.2f} MB)")
                 return DownloadResult(url, dest, written, skipped=False,
                                       status=r.status_code)
+        except DownloadError:           # guard tripped: a retry would repeat it
+            tmp.unlink(missing_ok=True)
+            raise
         except Exception as exc:        # network flakiness -> retry
             last_error = exc
             tmp.unlink(missing_ok=True)
