@@ -195,7 +195,7 @@ def _run_upenn(config: Config, adapter, target: str) -> int:
     _write_and_report(results, outdir,
                       config.paths.figures / adapter.key / f"radiogenomics_{target}",
                       title=f"UPENN-GBM: {estimand.positive_label} from baseline MRI",
-                      data=data)
+                      data=data, flow=flow)
     return 0
 
 
@@ -369,7 +369,7 @@ def _run_ucsd(config: Config, adapter) -> int:
     _write_and_report(results, outdir,
                       config.paths.figures / adapter.key / "radiogenomics_tumor_vs_treatment",
                       title="UCSD-PTGBM: tumour vs treatment-related change",
-                      data=data)
+                      data=data, flow=flow)
 
     # Sensitivity analysis: restrict the negative class to the tiers where
     # the cohort states how the judgement was made.
@@ -471,7 +471,8 @@ def _fit_ladder(data: pd.DataFrame, *, outcome_col: str, blocks: dict,
 
 
 def _write_and_report(results: list, outdir: Path, figdir: Path, *,
-                      title: str, data: pd.DataFrame) -> None:
+                      title: str, data: pd.DataFrame,
+                      flow: CohortFlow | None = None) -> None:
     rows = []
     for r in results:
         row = {"model": r.model, "n": r.n_rows, "patients": r.n_patients,
@@ -523,8 +524,12 @@ def _write_and_report(results: list, outdir: Path, figdir: Path, *,
 
     try:
         from gbmplast.report.figures import (
-            calibration_plot, metric_comparison, pr_curves, roc_curves)
+            calibration_plot, cohort_flow_diagram, metric_comparison,
+            pr_curves, roc_curves)
         figdir = Path(figdir)
+        if flow is not None:
+            cohort_flow_diagram(flow.to_frame(), figdir / "cohort_flow.png",
+                                title=f"Analysis cohort flow - {title}")
         roc_curves(results, figdir / "roc_curves.png", title=title)
         pr_curves(results, figdir / "precision_recall.png", title=title)
         calibration_plot(results, figdir / "calibration.png", title=title)

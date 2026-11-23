@@ -191,3 +191,21 @@ def test_index_features_do_not_depend_on_the_next_visit(config):
             right = pd.to_numeric(b[column], errors="coerce").fillna(-999.0)
             moved = moved or not np.allclose(left, right, rtol=1e-9, atol=1e-9)
     assert moved, "the perturbation did not change any outcome; test is inert"
+
+
+def test_selection_recording_without_a_selection_step(synthetic_longitudinal):
+    """The no-feature-selection path must still record what the model used."""
+    from gbmplast.modeling.evaluate import evaluate_classifier, summarise_selection
+    from gbmplast.modeling.models import elastic_net_classifier
+
+    result = evaluate_classifier(
+        synthetic_longitudinal,
+        feature_cols=["cur_enhancing__volume_mm3", "prev_enhancing__volume_mm3",
+                      "age_at_diagnosis_years"],
+        outcome_col="next_rano_progression",
+        model_name="no_selection", estimator=elastic_net_classifier(),
+        select_features=False, n_splits=3, n_bootstrap=0)
+    assert result.selected_features is not None
+    stability = summarise_selection(result.selected_features, 3)
+    assert not stability.empty
+    assert (stability["selection_frequency"] == 1.0).all()

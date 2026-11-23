@@ -272,31 +272,38 @@ def cohort_flow_diagram(flow_frame: pd.DataFrame, out_path: Path, *,
     if steps.empty:
         return None
 
-    n_rows = len(steps) + len(exclusions)
+    n_rows = max(len(steps), len(exclusions) * 0.75) + 1
+    # The widest label sets the box width, so a long step name can never run
+    # under its own count.
+    longest = max((len(str(s)) for s in steps["label"]), default=20)
+    box_width = min(0.62, max(0.38, 0.0105 * longest + 0.12))
+    label_x, count_x = 0.035, box_width + 0.055
+
     with figure_context() as plt:
-        fig, ax = plt.subplots(figsize=(8.2, 0.52 * n_rows + 1.2))
+        fig, ax = plt.subplots(figsize=(10.0, 0.60 * n_rows + 1.3))
         ax.set_axis_off()
         y = 0.0
         for _, row in steps.iterrows():
-            ax.add_patch(plt.Rectangle((0.03, y), 0.52, 0.42,
+            ax.add_patch(plt.Rectangle((0.02, y), box_width, 0.42,
                                        facecolor="#eef4fc",
                                        edgecolor=series_color(0),
                                        linewidth=1.2, zorder=2))
-            ax.text(0.05, y + 0.21, f"{row['label']}", va="center",
-                    fontsize=9, color="#0b0b0b", zorder=3)
-            ax.text(0.53, y + 0.21, f"n = {int(row['n']):,}", va="center",
-                    ha="right", fontsize=9, fontweight="semibold",
+            ax.text(label_x, y + 0.21, _wrap(str(row["label"]), longest),
+                    va="center", fontsize=9, color="#0b0b0b", zorder=3)
+            ax.text(count_x, y + 0.21, f"n = {int(row['n']):,}", va="center",
+                    ha="left", fontsize=9, fontweight="semibold",
                     color=series_color(0), zorder=3)
             y -= 0.62
-        y_ex = -0.1
+        y_ex = -0.12
+        exclusion_x = count_x + 0.085
         for _, row in exclusions.iterrows():
-            ax.text(0.60, y_ex, f"- excluded: {row['label']}", va="center",
-                    fontsize=8, color=TEXT_SECONDARY)
-            ax.text(0.985, y_ex, f"n = {int(row['n']):,}", va="center",
-                    ha="right", fontsize=8, color=STATUS["serious"])
-            y_ex -= 0.42
+            ax.text(exclusion_x, y_ex,
+                    f"\u2212 excluded ({_wrap(str(row['label']), 58)}): "
+                    f"{int(row['n']):,}",
+                    va="center", fontsize=7.5, color=TEXT_SECONDARY)
+            y_ex -= 0.46
         ax.set_xlim(0, 1)
-        ax.set_ylim(min(y, y_ex) - 0.2, 0.52)
+        ax.set_ylim(min(y, y_ex) - 0.25, 0.52)
         ax.set_title(title or "Analysis cohort flow", loc="left", fontsize=11)
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -334,9 +341,16 @@ def observed_vs_predicted(result, out_path: Path, *,
 
 
 def next_visit_figures(results: list, eligible: pd.DataFrame, figdir: Path,
-                       *, outcome: str) -> list[Path]:
+                       *, outcome: str,
+                       flow: pd.DataFrame | None = None) -> list[Path]:
     figdir = Path(figdir)
     written: list[Path] = []
+    if flow is not None:
+        path = cohort_flow_diagram(
+            flow, figdir / "cohort_flow.png",
+            title=f"Analysis cohort flow ({outcome})")
+        if path:
+            written.append(path)
     if outcome == "rano":
         for fn, name, metric in (
             (roc_curves, "roc_curves.png", None),
@@ -399,6 +413,17 @@ def _legend_below(fig, ax, *, n: int) -> None:
               ncol=1 if n <= 4 else 2, frameon=False,
               handlelength=1.8, columnspacing=1.4, borderaxespad=0.0)
     fig.subplots_adjust(bottom=0.30)
+
+
+def _wrap(text: str, width: int, max_lines: int = 2) -> str:
+    """Soft-wrap a label so it cannot overrun its box."""
+    import textwrap
+
+    lines = textwrap.wrap(text, width=max(18, width))
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = lines[-1].rstrip(".,; ") + "..."
+    return "\n".join(lines)
 
 
 def _pretty(name: str) -> str:

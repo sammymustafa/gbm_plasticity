@@ -227,10 +227,11 @@ def baseline_predictors_of_recurrence(
                      "n": int(ok.sum()), "status": "tested",
                      "spearman_rho": float(rho), "p_value": float(p)})
     out = pd.DataFrame(rows)
-    tested = out.get("status") == "tested"
-    if tested is not None and tested.any():
-        out.loc[tested, "fdr"] = _benjamini_hochberg(
-            out.loc[tested, "p_value"].to_numpy())
+    if "status" in out.columns:
+        tested = out["status"] == "tested"
+        if tested.any():
+            out.loc[tested, "fdr"] = _benjamini_hochberg(
+                out.loc[tested, "p_value"].to_numpy())
     out.attrs["caution"] = (
         "Univariable exploration only. These are associations within one "
         "cohort of ~56 patients, not validated predictors."

@@ -1,0 +1,52 @@
+# Module C: molecular plasticity on GBM-CARE (GEO GSE274546).
+cohort:
+  key: gbm_care
+
+cohorts:
+  gbm_care:
+    raw_subdir: gbm_care
+    series: GSE274546
+    # Point this at a downloaded Synapse folder to prefer the consortium's
+    # own per-cell annotations over the marker-based assignment derived here.
+    # Requires a Synapse account and the CARE data-use agreement.
+    synapse_dir: null
+
+molecular:
+  pseudobulk:
+    # Nuclei below this count are dropped by the reader; the cohort's own
+    # CellRanger output is otherwise taken as-is.
+    min_counts_per_cell: 200
+    min_cells_per_gene: 3
+    # A malignant pseudobulk is only produced above this many nuclei; below
+    # it the profile is NA rather than computed from a handful of cells.
+    min_malignant_cells: 50
+  malignant_compartment:
+    # Primary definition: canonical tumour-enriched markers.
+    method: marker_based
+    compartment: malignant_glial
+    # Validation: the GBM-defining chr7 gain / chr10 loss signature, scored
+    # against immune and endothelial cells. Per-CELL copy-number calling was
+    # evaluated and found unreliable on this sparse data (malignant fraction
+    # swung 0.1%-20% across samples), so CNV is a sample-level check, not a
+    # per-cell filter.
+    cnv_validation: true
+    cnv_reference_compartments: [myeloid, t_cell, b_plasma, endothelial]
+    cnv_min_reference_cells: 30
+    cnv_min_separation: 0.02
+  signatures:
+    min_coverage: 0.4
+
+analysis:
+  plasticity:
+    estimand: >
+      Within patients, how do malignant-state and immune programmes differ
+      between the primary tumour and its first recurrence?
+    unit_of_inference: patient
+    pairing: primary vs first_recurrence
+    multiple_testing: benjamini_hochberg
+    n_bootstrap: 2000
+    caveats:
+      - "a change in the dominant signature is NOT lineage conversion"
+      - "expression scores are NOT evidence of immune function"
+      - "treatment is unrecorded, so changes mix therapy, evolution and sampling"
+      - "seven sites and two dissociation protocols; site is a batch variable"

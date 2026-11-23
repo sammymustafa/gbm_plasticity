@@ -245,7 +245,8 @@ def run_next_visit_analysis(config: Config, *, dataset: str = "lumiere",
 
     try:
         from gbmplast.report.figures import next_visit_figures
-        written = next_visit_figures(results, eligible, figdir, outcome=outcome)
+        written = next_visit_figures(results, eligible, figdir,
+                                     outcome=outcome, flow=flow.to_frame())
         if written:
             print(f"\nfigures -> {figdir} ({len(written)} files)")
     except Exception as exc:

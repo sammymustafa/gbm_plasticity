@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -233,3 +235,21 @@ def test_care_specimens_have_no_collection_dates(config):
     molecular = bundle.molecular_samples
     assert molecular["tissue_collection_relative_day"].isna().all()
     assert molecular["timepoint_index"].notna().all()
+
+
+def test_baseline_predictors_handle_no_matching_columns():
+    """An empty result frame must not raise."""
+    from gbmplast.molecular.paired import baseline_predictors_of_recurrence
+
+    paired = pd.DataFrame({"local_patient_id": ["a"] * 12,
+                           "state_MES__recurrent": np.arange(12.0)})
+    out = baseline_predictors_of_recurrence(
+        paired, outcome="state_MES", predictors=["not_present"])
+    assert isinstance(out, pd.DataFrame)
+
+
+def test_empty_effects_frame_makes_no_figure():
+    from gbmplast.report.figures_molecular import effect_forest
+
+    assert effect_forest(pd.DataFrame(), Path("/tmp/x.png")) is None
+    assert effect_forest(pd.DataFrame({"a": [1]}), Path("/tmp/x.png")) is None

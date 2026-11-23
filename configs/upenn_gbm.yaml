@@ -1,0 +1,49 @@
+# Module B(i): radiogenomics on UPENN-GBM.
+cohort:
+  key: upenn_gbm
+
+cohorts:
+  upenn_gbm:
+    raw_subdir: upenn_gbm
+    # 'automatic' covers 611 scans; 'corrected' only 232. The automatic
+    # segmentation is the default so the analysis set is not silently
+    # restricted to the subset that was manually corrected.
+    captk_segmentation: automatic
+    captk_maps: [T1, T1GD, T2, FLAIR, DTI_AD, DTI_FA, DTI_RD, DTI_TR,
+                 DSC_ap-rCBV, DSC_PH, DSC_PSR]
+    captk_regions: [ET, ED, NC]
+
+analysis:
+  mgmt:
+    estimand: >
+      Can MGMT promoter methylation status be predicted from pre-operative
+      MRI radiomics and routinely available clinical covariates?
+    prediction_time: baseline pre-operative scan, before surgery
+    outcome: mgmt_methylation
+    positive_label: methylated
+    eligibility:
+      - "scan is the baseline pre-operative study (id suffix _11)"
+      - "MGMT is reported as Methylated or Unmethylated"
+      - "CaPTk radiomic features exist for the scan"
+    exclusions:
+      - "recurrence scans (_21): not a baseline, and would put two scans of
+         one patient into the analysis"
+      - "Indeterminate / Not Available MGMT calls"
+    confounders:
+      - "scanner and protocol vary across the cohort; no harmonisation is applied"
+      - "the MGMT assay method is not released per patient"
+
+  survival:
+    estimand: >
+      Which routinely available baseline covariates are associated with
+      overall survival?
+    outcome: overall_survival
+    # Censoring is genuine here: Survival_Status separates Deceased from
+    # Alive / Lost to Follow-up / uncertain-date, so a Cox model is
+    # identifiable. Contrast with LUMIERE, where it is not.
+    censoring_available: true
+
+models:
+  - clinical_only
+  - mri_only
+  - combined

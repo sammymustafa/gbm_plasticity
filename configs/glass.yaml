@@ -1,0 +1,22 @@
+# Optional Module C extension: GLASS (Synapse, account + consortium terms).
+cohort:
+  key: glass
+
+cohorts:
+  glass:
+    raw_subdir: glass
+    # GLASS occasionally renames columns between data releases; point these
+    # at the files you downloaded rather than renaming your copies.
+    files:
+      surgeries: clinical_surgeries.tsv
+      cases:     clinical_cases.tsv
+      rnaseq:    analysis_rnaseq_tpm.tsv
+
+analysis:
+  caveats:
+    - "surgical intervals are released in months, coarser than the day-level
+       canonical schema"
+    - "mixed glioma histologies and grades: filter explicitly for a GBM-only
+       analysis"
+    - "gated data; this repository ships the adapter and instructions, never
+       credentials"

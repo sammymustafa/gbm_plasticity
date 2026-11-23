@@ -76,7 +76,9 @@ def paired_slope_plot(
 def effect_forest(effects: pd.DataFrame, out_path: Path, *,
                   title: str = "", top_n: int = 18) -> Path | None:
     """Paired mean difference with bootstrap CI, ordered by effect size."""
-    tested = effects[effects.get("status") == "tested"].copy()
+    if effects is None or effects.empty or "status" not in effects.columns:
+        return None
+    tested = effects[effects["status"] == "tested"].copy()
     if tested.empty:
         return None
     tested = tested.reindex(

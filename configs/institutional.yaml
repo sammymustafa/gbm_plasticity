@@ -1,0 +1,74 @@
+# Phase 5 template: the future institutional cohort.
+#
+# Copy this file, point raw_subdir at your export, and map your column names.
+# No model code changes. See docs/INSTITUTIONAL_SWITCHOVER.md.
+cohort:
+  key: institutional
+
+cohorts:
+  institutional:
+    raw_subdir: data/raw/institutional     # an absolute path is fine
+    cohort_key: MYSITE                     # becomes the id namespace
+    t0_definition: "date of first resection"
+
+    files:
+      patients:          patients.csv
+      visits:            visits.csv
+      imaging:           imaging.csv
+      treatments:        treatments.csv
+      symptoms:          symptoms.csv
+      molecular_samples: molecular_samples.csv
+      outcomes:          outcomes.csv
+
+    # canonical_name: your_column_name
+    column_map:
+      patients:
+        local_patient_id:       mrn
+        sex:                    gender
+        age_at_diagnosis_years: age_at_dx
+        mgmt_status:            mgmt_result
+        idh_status:             idh_result
+      visits:
+        local_patient_id:   mrn
+        local_visit_id:     accession
+        relative_time_days: days_from_surgery
+
+    value_map:
+      patients:
+        sex:         {M: male, F: female}
+        mgmt_status: {MET: methylated, UNMET: unmethylated, IND: unknown}
+        idh_status:  {WT: wildtype, MUT: mutant}
+
+    # Calendar dates are converted to relative days and then DROPPED, so
+    # derived tables stay free of dates.
+    date_columns:
+      visits:
+        anchor: surgery_date
+        targets:
+          scan_date: relative_time_days
+
+    # Optional, opt-in. Extracted symptoms are unvalidated until reviewed.
+    notes:
+      enabled: false
+      file: deidentified_notes.csv
+      text_column: note_text
+      document_id_column: note_id
+      patient_column: mrn
+      day_column: note_relative_day
+      window: 60
+      extra_synonyms: {}
+
+longitudinal:
+  subregions: [enhancing, non_enhancing]
+  min_interscan_interval_days: 7
+  max_interscan_interval_days: 365
+  lookback_days: 365
+
+# Declare these before modelling; they are copied into estimand.csv.
+analysis:
+  next_visit_rano:
+    prediction_time: the index visit of a consecutive imaged pair
+    lookback_window_days: 365
+    outcome_horizon_days: 365
+    outcome: rano_progression_next_visit
+    positive_label: PD

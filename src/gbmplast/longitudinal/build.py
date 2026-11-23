@@ -100,8 +100,7 @@ def visit_imaging_summary(
         sub = mask_level[mask_level["subregion"] == subregion]
         if sub.empty:
             continue
-        keep = sub[id_cols + shape_cols + ["_label_absent"]].copy() \
-            if "_label_absent" in sub.columns else sub[id_cols + shape_cols].copy()
+        keep = sub[id_cols + shape_cols].copy()
         absent = sub[all_feature_cols].isna().all(axis=1)
         keep["_label_absent"] = absent.to_numpy()
         keep = keep.drop_duplicates(subset=["visit_id"])

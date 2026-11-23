@@ -1,0 +1,47 @@
+# Module B(ii): tumour vs treatment-related change on UCSD-PTGBM.
+cohort:
+  key: ucsd_ptgbm
+
+cohorts:
+  ucsd_ptgbm:
+    raw_subdir: ucsd_ptgbm
+    # Drop a feature table keyed by local_visit_id here to activate the
+    # imaging arm without touching model code. The cohort's own NIfTI bundle
+    # is distributed through IBM Aspera and is not retrievable headlessly.
+    imaging_features_file: imaging_features.csv
+
+analysis:
+  tumor_vs_treatment:
+    estimand: >
+      At a post-treatment MRI timepoint, does the lesion represent
+      residual/recurrent tumour rather than treatment-related change?
+    prediction_time: the post-treatment MRI acquisition
+    outcome: tumor_vs_treatment_change
+    positive_label: tumor_positive
+    # Only covariates the cohort states preceded the scan are used. The
+    # released "days to the last <event> prior to scan" columns satisfy that
+    # by construction.
+    covariates_knowable_at_scan_time:
+      - days_since_last_surgery
+      - days_since_last_radiation
+      - days_since_last_avastin
+      - had_radiotherapy
+      - had_bevacizumab
+      - mgmt_methylated
+      - idh_mutant
+    adjudication:
+      # The negative class carries an explicit tier; the positive class does
+      # not, so a pathology-only comparison is possible on one side only.
+      histopathology: ["PsP (bx proven)"]
+      clinical_consensus: ["PsP (clinically confirmed)"]
+      radiologic_followup: ["NS"]
+      unknown: ["Radiation necrosis"]
+      sensitivity_analyses:
+        - histopathology_only_negatives
+        - pathology_or_clinical_negatives
+    confounders:
+      - "bevacizumab reduces enhancement independently of tumour burden"
+      - "time since radiotherapy shapes the prior probability of pseudoprogression"
+      - "the cohort was enriched for pathology-proven cases, so the 79%
+         positive rate is not a routine-imaging prevalence"
+      - "49 patients contribute 2-4 timepoints; handled by patient grouping"

@@ -360,8 +360,11 @@ def _record_selected(fitted, feature_cols: list[str],
             mask = fitted.named_steps["select"].get_support()
         except Exception:
             mask = None
-    chosen = [n for n, keep in zip(names, mask)] if mask is None else \
-             [n for n, keep in zip(names, mask) if keep]
+    if mask is None:
+        # No selection step (or get_support failed): every feature survived.
+        chosen = list(names)
+    else:
+        chosen = [n for n, keep in zip(names, mask) if keep]
     model = fitted.named_steps.get("model") if hasattr(fitted, "named_steps") else None
     coefs = None
     if model is not None:
