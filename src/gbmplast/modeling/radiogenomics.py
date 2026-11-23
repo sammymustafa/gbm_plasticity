@@ -34,6 +34,8 @@ from gbmplast.config import Config
 from gbmplast.modeling import metrics as M
 from gbmplast.modeling.estimand import CohortFlow, Estimand
 from gbmplast.modeling.evaluate import evaluate_classifier, summarise_selection
+from gbmplast.modeling.leakage import audit_analysis
+from gbmplast.modeling.splits import split_indices
 from gbmplast.modeling.models import (
     CLASSIFIER_GRIDS,
     PrevalenceClassifier,
@@ -187,11 +189,11 @@ def _run_upenn(config: Config, adapter, target: str) -> int:
         print("\n  fewer than 50 eligible scans; refusing to model")
         return 0
 
-    results = _fit_ladder(data, outcome_col="y",
-                          blocks={"clinical_only": clinical_cols,
-                                  "mri_only": radiomic_cols,
-                                  "combined": combined_cols},
-                          config=config)
+    blocks = {"clinical_only": clinical_cols, "mri_only": radiomic_cols,
+              "combined": combined_cols}
+    _run_leakage_audit(data, analysis=f"upenn_gbm/{target}", blocks=blocks,
+                       outcome_col="y", config=config, outdir=outdir)
+    results = _fit_ladder(data, outcome_col="y", blocks=blocks, config=config)
     _write_and_report(results, outdir,
                       config.paths.figures / adapter.key / f"radiogenomics_{target}",
                       title=f"UPENN-GBM: {estimand.positive_label} from baseline MRI",
@@ -365,6 +367,10 @@ def _run_ucsd(config: Config, adapter) -> int:
               "combined": combined_cols}
     if imaging_cols:
         blocks["imaging_only"] = imaging_cols
+    _run_leakage_audit(data, analysis="ucsd_ptgbm/tumor_vs_treatment",
+                       blocks=blocks, outcome_col="y", config=config,
+                       outdir=outdir, treatments=bundle.treatments,
+                       prediction_time_col="relative_time_days")
     results = _fit_ladder(data, outcome_col="y", blocks=blocks, config=config)
     _write_and_report(results, outdir,
                       config.paths.figures / adapter.key / "radiogenomics_tumor_vs_treatment",
@@ -442,6 +448,30 @@ def _ucsd_adjudication_sensitivity(data: pd.DataFrame, blocks: dict,
 # ==========================================================================
 # shared
 # ==========================================================================
+
+def _run_leakage_audit(data: pd.DataFrame, *, analysis: str, blocks: dict,
+                       outcome_col: str, config: Config, outdir: Path,
+                       treatments: pd.DataFrame | None = None,
+                       specimen_col: str | None = None,
+                       prediction_time_col: str | None = None) -> None:
+    combined = blocks.get("combined") or next(iter(blocks.values()), [])
+    if not combined:
+        return
+    y = pd.to_numeric(data[outcome_col], errors="coerce")
+    audit = audit_analysis(
+        data, analysis=analysis, feature_cols=combined,
+        outcome_col=outcome_col,
+        folds=split_indices(data[combined], y, data["patient_id"],
+                            n_splits=int(config.get("modeling.cv.n_splits", 5)),
+                            seed=config.seed, stratify=True),
+        treatments=treatments, specimen_col=specimen_col,
+        prediction_time_col=prediction_time_col)
+    print()
+    print(audit.describe())
+    outdir.mkdir(parents=True, exist_ok=True)
+    audit.to_frame().to_csv(outdir / "leakage_audit.csv", index=False)
+    audit.raise_if_failed()
+
 
 def _fit_ladder(data: pd.DataFrame, *, outcome_col: str, blocks: dict,
                 config: Config, quiet: bool = False) -> list:

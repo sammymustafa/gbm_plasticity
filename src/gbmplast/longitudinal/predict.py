@@ -22,6 +22,8 @@ from gbmplast.config import Config
 from gbmplast.longitudinal.build import build_longitudinal
 from gbmplast.modeling import metrics as M
 from gbmplast.modeling.estimand import CohortFlow, Estimand
+from gbmplast.modeling.leakage import audit_analysis
+from gbmplast.modeling.splits import split_indices
 from gbmplast.modeling.evaluate import (
     evaluate_classifier,
     evaluate_regressor,
@@ -224,6 +226,19 @@ def run_next_visit_analysis(config: Config, *, dataset: str = "lumiere",
     print(f"\nFeature blocks: clinical={len(clinical)}, "
           f"imaging+dynamics={len(imaging)}, history={len(history)}, "
           f"combined={len(combined)}")
+
+    audit = audit_analysis(
+        eligible, analysis=f"{dataset}/next_visit_{outcome}",
+        feature_cols=combined, outcome_col=outcome_col,
+        folds=split_indices(eligible[combined],
+                            pd.to_numeric(eligible[outcome_col], errors="coerce"),
+                            eligible["patient_id"], n_splits=n_splits,
+                            seed=seed, stratify=(outcome == "rano")),
+        prediction_time_col="prediction_time_days")
+    print()
+    print(audit.describe())
+    audit.to_frame().to_csv(outdir / "leakage_audit.csv", index=False)
+    audit.raise_if_failed()
 
     results = (_run_rano_models if outcome == "rano" else _run_volume_models)(
         eligible, outcome_col=outcome_col, clinical=clinical,
